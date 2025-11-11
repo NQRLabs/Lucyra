@@ -709,7 +709,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                     lastBaseName = baseName;
                 }
                 
-                this.updateEffectDisplay();\n                this.updateInfoPanel();\n                this.updateInfoPanel();
+                this.updateEffectDisplay();
+                this.updateInfoPanel();
             },
 
             setupEventListeners() {
@@ -723,7 +724,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                         const value = parseInt(effectInput.value);
                         if (value >= 1 && value <= this.effects.length) {
                             this.currentEffectIndex = value - 1;
-                            this.updateEffectDisplay();\n                this.updateInfoPanel();\n                            this.updateInfoPanel();
+                            this.updateEffectDisplay();
+                            this.updateInfoPanel();
                             this.render();
                         }
                         effectInput.value = '';
@@ -937,7 +939,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                     // Jump to next/previous group
                     const nextGroup = (currentGroup + direction + this.effectGroups.length) % this.effectGroups.length;
                     this.currentEffectIndex = this.effectGroups[nextGroup];
-                    this.updateEffectDisplay();\n                this.updateInfoPanel();\n                    this.updateInfoPanel();
+                    this.updateEffectDisplay();
+                    this.updateInfoPanel();
                     this.render();
                 } else if (e.shiftKey || this.isShiftPressed) {
                     // Adjust radius
@@ -949,7 +952,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                     // Cycle effects
                     const delta = e.deltaY > 0 ? 1 : -1;
                     this.currentEffectIndex = (this.currentEffectIndex + delta + this.effects.length) % this.effects.length;
-                    this.updateEffectDisplay();\n                this.updateInfoPanel();\n                    this.updateInfoPanel();
+                    this.updateEffectDisplay();
+                    this.updateInfoPanel();
                     this.render();
                 }
             },
@@ -1393,7 +1397,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                     this.scale = state.scale || 1.0;
                     this.panX = state.panX || 0;
                     this.panY = state.panY || 0;
-                    this.updateEffectDisplay();\n                this.updateInfoPanel();\n                    document.getElementById('radius-value').textContent = this.radius + 'px';
+                    this.updateEffectDisplay();
+                    this.updateInfoPanel();
+                    document.getElementById('radius-value').textContent = this.radius + 'px';
                     document.getElementById('zoom-value').textContent = Math.round(this.scale * 100) + '%';
                     this.render();
                     this.showHint('State loaded!', 2000);
@@ -1410,7 +1416,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                     this.scale = state.scale || 1.0;
                     this.panX = state.panX || 0;
                     this.panY = state.panY || 0;
-                    this.updateEffectDisplay();\n                this.updateInfoPanel();\n                    document.getElementById('radius-value').textContent = this.radius + 'px';
+                    this.updateEffectDisplay();
+                    this.updateInfoPanel();
+                    document.getElementById('radius-value').textContent = this.radius + 'px';
                     document.getElementById('zoom-value').textContent = Math.round(this.scale * 100) + '%';
                     this.render();
                     this.showHint(`Preset ${slot + 1} loaded!`, 2000);
@@ -1438,7 +1446,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
             resetEffect() {
                 this.currentEffectIndex = 0;
                 this.radius = 150;
-                this.updateEffectDisplay();\n                this.updateInfoPanel();\n                document.getElementById('radius-value').textContent = this.radius + 'px';
+                this.updateEffectDisplay();
+                this.updateInfoPanel();
+                document.getElementById('radius-value').textContent = this.radius + 'px';
                 this.drawOriginal();
             },
 
