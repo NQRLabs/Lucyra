@@ -439,6 +439,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
             canvas: null,
             ctx: null,
             originalImage: null,
+            sourceCanvas: null,
+            sourceCtx: null,
+            sourceImageData: null,
             imageData: null,
             mouseX: 0,
             mouseY: 0,
@@ -747,11 +750,12 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                     if (e.key === 'Alt') this.isAltPressed = true;
                     if (e.key === 'ArrowUp') {
                         e.preventDefault();
-                        this.handleWheel({ deltaY: -100, shiftKey: this.isShiftPressed, ctrlKey: this.isCtrlPressed, altKey: this.isAltPressed });
+                        // After inverting scroll direction, ArrowUp should still advance effects
+                        this.handleWheel({ deltaY: 100, shiftKey: this.isShiftPressed, ctrlKey: this.isCtrlPressed, altKey: this.isAltPressed });
                     }
                     if (e.key === 'ArrowDown') {
                         e.preventDefault();
-                        this.handleWheel({ deltaY: 100, shiftKey: this.isShiftPressed, ctrlKey: this.isCtrlPressed, altKey: this.isAltPressed });
+                        this.handleWheel({ deltaY: -100, shiftKey: this.isShiftPressed, ctrlKey: this.isCtrlPressed, altKey: this.isAltPressed });
                     }
                 });
 
@@ -773,6 +777,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                     const img = new Image();
                     img.onload = () => {
                         this.originalImage = img;
+                        // Prepare native-resolution source canvas/data
+                        this.sourceCanvas = document.createElement('canvas');
+                        this.sourceCanvas.width = img.width;
+                        this.sourceCanvas.height = img.height;
+                        this.sourceCtx = this.sourceCanvas.getContext('2d', { willReadFrequently: true });
+                        this.sourceCtx.drawImage(img, 0, 0);
+                        this.sourceImageData = this.sourceCtx.getImageData(0, 0, img.width, img.height);
                         this.scale = 1.0;
                         this.panX = 0;
                         this.panY = 0;
@@ -921,8 +932,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                     document.getElementById('zoom-value').textContent = Math.round(this.scale * 100) + '%';
                     this.render();
                 } else if (e.altKey || this.isAltPressed) {
-                    // Jump between effect groups
-                    const direction = e.deltaY > 0 ? 1 : -1;
+                    // Jump between effect groups (inverted scroll direction)
+                    const direction = e.deltaY > 0 ? -1 : 1;
                     
                     // Find current group
                     let currentGroup = 0;
@@ -949,8 +960,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                     document.getElementById('radius-value').textContent = this.radius + 'px';
                     this.render();
                 } else {
-                    // Cycle effects
-                    const delta = e.deltaY > 0 ? 1 : -1;
+                    // Cycle effects (inverted scroll direction)
+                    const delta = e.deltaY > 0 ? -1 : 1;
                     this.currentEffectIndex = (this.currentEffectIndex + delta + this.effects.length) % this.effects.length;
                     this.updateEffectDisplay();
                     this.updateInfoPanel();
@@ -978,14 +989,42 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                 // Cache effected data if effect hasn't changed
                 const effect = this.effects[this.currentEffectIndex];
                 if (!this.cachedEffectedData || this.cachedEffectIndex !== this.currentEffectIndex) {
-                    const tempCanvas = document.createElement('canvas');
-                    tempCanvas.width = this.canvas.width;
-                    tempCanvas.height = this.canvas.height;
-                    const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
-                    tempCtx.putImageData(this.imageData, 0, 0);
+                    // 1) Apply effect at native image resolution to preserve bit-planes
+                    const srcW = (this.sourceCanvas && this.sourceCanvas.width) || (this.originalImage ? this.originalImage.width : this.canvas.width);
+                    const srcH = (this.sourceCanvas && this.sourceCanvas.height) || (this.originalImage ? this.originalImage.height : this.canvas.height);
 
-                    this.cachedEffectedData = tempCtx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-                    effect.apply.call(this, this.cachedEffectedData.data, effect.params);
+                    const nativeCanvas = document.createElement('canvas');
+                    nativeCanvas.width = srcW;
+                    nativeCanvas.height = srcH;
+                    const nctx = nativeCanvas.getContext('2d', { willReadFrequently: true });
+                    if (this.sourceImageData) {
+                        nctx.putImageData(this.sourceImageData, 0, 0);
+                    } else if (this.originalImage) {
+                        nctx.drawImage(this.originalImage, 0, 0);
+                    } else {
+                        nctx.drawImage(this.canvas, 0, 0);
+                    }
+
+                    let nativeData = nctx.getImageData(0, 0, srcW, srcH);
+                    const params = { ...effect.params, workingWidth: srcW, workingHeight: srcH };
+                    effect.apply.call(this, nativeData.data, params);
+                    nctx.putImageData(nativeData, 0, 0);
+
+                    // 2) Scale effected native result into a full-canvas buffer aligned to the image placement
+                    const scaledCanvas = document.createElement('canvas');
+                    scaledCanvas.width = this.canvas.width;
+                    scaledCanvas.height = this.canvas.height;
+                    const sctx = scaledCanvas.getContext('2d', { willReadFrequently: true });
+                    sctx.fillStyle = '#000';
+                    sctx.fillRect(0, 0, scaledCanvas.width, scaledCanvas.height);
+                    // Draw effected image into its displayed rect
+                    const drawX = this.drawX || 0;
+                    const drawY = this.drawY || 0;
+                    const drawW = this.drawW || this.canvas.width;
+                    const drawH = this.drawH || this.canvas.height;
+                    sctx.drawImage(nativeCanvas, drawX, drawY, drawW, drawH);
+
+                    this.cachedEffectedData = sctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
                     this.cachedEffectIndex = this.currentEffectIndex;
                 }
 
@@ -1105,8 +1144,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
             },
 
             gradientDetect(data, params) {
-                const width = this.canvas.width;
-                const height = this.canvas.height;
+                const width  = (params && params.workingWidth)  || this.canvas.width;
+                const height = (params && params.workingHeight) || this.canvas.height;
                 const tempData = new Uint8ClampedArray(data);
 
                 for (let y = 1; y < height - 1; y++) {
@@ -1225,8 +1264,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
             },
 
             edgeDetect(data, params) {
-                const width = this.canvas.width;
-                const height = this.canvas.height;
+                const width  = (params && params.workingWidth)  || this.canvas.width;
+                const height = (params && params.workingHeight) || this.canvas.height;
                 const tempData = new Uint8ClampedArray(data);
 
                 for (let y = 1; y < height - 1; y++) {
