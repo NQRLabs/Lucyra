@@ -75,6 +75,83 @@
             overflow: hidden;
         }
 
+        /* Right-side Info Panel */
+        #info-panel {
+            width: 320px;
+            background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%);
+            padding: 20px;
+            overflow-y: auto;
+            border-left: 2px solid #00d4ff;
+            box-shadow: -4px 0 20px rgba(0, 212, 255, 0.3);
+        }
+
+        .info-section-title {
+            font-size: 12px;
+            color: #00d4ff;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 15px;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        .info-text {
+            font-size: 11px;
+            line-height: 1.6;
+            color: #b0b0b0;
+            margin-bottom: 10px;
+        }
+
+        .method-name {
+            font-size: 16px;
+            color: #00ff88;
+            font-weight: bold;
+            text-align: center;
+            padding: 8px;
+            background: rgba(0, 212, 255, 0.08);
+            border-radius: 6px;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px rgba(0, 255, 136, 0.35);
+        }
+
+        /* License modal styles (adapted to Lucyra palette) */
+        .license-footer {
+          margin-top: 30px;
+          margin-bottom: 20px;
+          padding: 10px 8px;
+          font-size: 0.68rem;
+          color: #a9a9b2;
+          opacity: 0.7;
+          cursor: pointer;
+          transition: opacity 0.15s ease;
+          text-align: center;
+        }
+
+        .license-footer:hover { opacity: 1; }
+
+        .license-overlay {
+          display: none; position: fixed; inset: 0;
+          background: rgba(0,0,0,0.7); z-index: 999;
+        }
+
+        .license-modal {
+          display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+          background: #0f0f16; border: 2px solid rgba(0,212,255,0.35);
+          border-radius: 12px; padding: 20px; max-width: 520px; width: 90%;
+          max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.6);
+          z-index: 1000; text-align: center;
+        }
+
+        .license-modal.show, .license-overlay.show { display: block; }
+
+        .license-modal-header {
+          position: relative; display: flex; justify-content: center; align-items: center;
+          padding-right: 32px; gap: 12px;
+        }
+
+        .license-modal-title { margin: 0; font-size: 1rem; text-align: center; width: 100%; color: #e0f7ff; }
+        .license-modal-close { position: absolute; top: 0; right: 0; cursor: pointer; font-size: 1.5rem; color: #a9a9b2; line-height: 1; }
+
         h1 {
             font-size: 28px;
             margin-bottom: 5px;
@@ -329,6 +406,33 @@
         <canvas id="canvas"></canvas>
         <div class="cursor-hint" id="hint">Load an image to begin analysis</div>
     </div>
+    <div id="info-panel">
+        <h1>INFO</h1>
+        <div class="tagline">Filter Details</div>
+        <div id="info-content" class="section">
+            <p style="color: #888; font-size: 11px; text-align: center; font-style: italic;">
+                Load an image and select an effect to see details
+            </p>
+        </div>
+        <footer class="license-footer" id="licenseLink">MIT License &middot; Developed by NQR &middot; Click to view</footer>
+    </div>
+
+    <div class="license-overlay" id="licenseOverlay"></div>
+    <div class="license-modal" id="licenseModal" role="dialog" aria-modal="true" aria-labelledby="licenseTitle">
+      <div class="license-modal-header">
+        <h3 class="license-modal-title" id="licenseTitle">MIT License</h3>
+        <span class="license-modal-close" id="licenseClose" aria-label="Close license dialog">&times;</span>
+      </div>
+      <pre class="small-muted" style="text-align:center; white-space:pre-wrap; margin-top:14px; color:#a9a9b2;">
+Copyright (c) 2025 NQR
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+      </pre>
+    </div>
 
     <script>
         const app = {
@@ -350,6 +454,109 @@
             cachedEffectedData: null,
             cachedEffectIndex: -1,
             
+            // Info panel helpers
+            getLightingInfo(effect) {
+                const chNames = ['Red', 'Green', 'Blue'];
+                const p = (effect && effect.params) || {};
+                if (!effect) return { description: '', usage: '', params: '' };
+                if (effect.apply === this.brightness) {
+                    return { description: 'Uniformly boosts RGB intensities across the image.', usage: 'Good for coaxing out low-contrast payloads that sit just above noise. Diagnostic for testing dynamic range sensitivity: if hidden content strengthens as brightness increases, it likely modulates luminance slightly.', params: `Boost: ${p.boost ?? '—'}x` };
+                }
+                if (effect.apply === this.contrast) {
+                    return { description: 'Expands or compresses differences around mid-gray (global contrast).', usage: 'Enhances subtle luma modulations typical of local-contrast or high-frequency watermarks. Useful to diagnose whether the signal lives in luminance.', params: `Factor: ${p.factor ?? '—'}` };
+                }
+                if (effect.apply === this.isolateChannel) {
+                    return { description: 'Shows only one color channel; others are suppressed.', usage: 'Ideal for revealing single-channel or chroma-biased embeds (e.g., red-only nudges). Diagnostic for locating channel-specific anomalies.', params: `Channel: ${chNames[p.channel ?? 0]}` };
+                }
+                if (effect.apply === this.amplifyChannel) {
+                    return { description: 'Multiplies one channel while leaving others unchanged.', usage: 'Boosts weak single-channel deviations to make chroma nudges or R/G/B imbalances visible.', params: `Channel: ${chNames[p.channel ?? 0]}, Factor: ${p.factor ?? '—'}` };
+                }
+                if (effect.apply === this.invert) {
+                    return { description: 'Inverts all channels (negative image).', usage: 'Sometimes exposes negative-going embeds or helps separate payload from background tone.', params: '' };
+                }
+                if (effect.apply === this.invertChannel) {
+                    return { description: 'Inverts only the selected channel.', usage: 'Highlights asymmetric channel encodings by flipping one channel against the others.', params: `Channel: ${chNames[p.channel ?? 0]}` };
+                }
+                if (effect.apply === this.bitPlane) {
+                    return { description: 'Extracts a specific bit from each pixel (bit-plane slicing).', usage: 'Directly elicits LSB-style steganography. If legible content emerges at a low bit-plane, LSB embedding is likely.', params: `Channel: ${chNames[p.channel ?? 0]}, Bit: ${p.bit ?? '—'}` };
+                }
+                if (effect.apply === this.colorDifference) {
+                    return { description: 'Shows the absolute difference between two color channels.', usage: 'Reveals chroma mismatches caused by color-biased embeds. Helpful for diagnosing channel coupling issues.', params: `Pair: ${chNames[p.ch1 ?? 0]} - ${chNames[p.ch2 ?? 1]}, Amplification: x${p.amp ?? '—'}` };
+                }
+                if (effect.apply === this.gradientDetect) {
+                    return { description: 'Computes gradient magnitude in a direction (H, V, or both).', usage: 'Elicits high-frequency payloads placed along edges or textures, common in edge/Laplacian-style watermarks.', params: `Direction: ${p.direction ?? 'both'}` };
+                }
+                if (effect.apply === this.aboveAverage) {
+                    return { description: 'Keeps pixels brighter than the global average, scaled by a boost.', usage: 'Screens for bright outliers that may encode signals; quick anomaly detector for over-bright embeds.', params: `Boost: x${p.boost ?? '—'}` };
+                }
+                if (effect.apply === this.belowAverage) {
+                    return { description: 'Keeps pixels darker than the global average, scaled by a boost.', usage: 'Screens for dark outliers; useful for payloads that reduce luminance locally.', params: `Boost: x${p.boost ?? '—'}` };
+                }
+                if (effect.apply === this.hueOnly) {
+                    return { description: 'Visualizes hue while discarding luminance structure.', usage: 'Exposes hue-nudge steganography where brightness is preserved but color wheel shifts slightly.', params: '' };
+                }
+                if (effect.apply === this.saturationOnly) {
+                    return { description: 'Maps saturation as intensity (grayscale).', usage: 'Highlights chroma modulation embeds that raise or lower saturation locally.', params: '' };
+                }
+                if (effect.apply === this.luminanceOnly) {
+                    return { description: 'Shows luminance (perceptual brightness) alone.', usage: 'Useful to test if the signal lives primarily in the luma domain.', params: '' };
+                }
+                if (effect.apply === this.hueAmplified) {
+                    return { description: 'Amplifies hue differences to exaggerate subtle color shifts.', usage: 'Coaxes out faint hue nudges used to hide payloads without brightness changes.', params: '' };
+                }
+                if (effect.apply === this.saturationAmplified) {
+                    return { description: 'Amplifies saturation to magnify weak color-intensity changes.', usage: 'Brings out low-level chroma variations that might encode signal.', params: '' };
+                }
+                if (effect.apply === this.xorPattern) {
+                    return { description: 'Applies a per-channel XOR with a constant mask.', usage: 'Can expose periodic/parity artifacts from certain arithmetic or binary encodings.', params: `Mask: ${p.value ?? '—'}` };
+                }
+                if (effect.apply === this.edgeDetect) {
+                    return { description: 'Edge magnitude via Sobel-like gradients across RGB.', usage: 'Elicits edge-anchored watermarks and high-frequency embeds; diagnostic for frequency placement.', params: `Threshold: ${p.threshold ?? '—'}` };
+                }
+                if (effect.apply === this.posterize) {
+                    return { description: 'Quantizes intensities into a small number of levels.', usage: 'Reveals clustered intensity steps indicative of LSB or quantization-based schemes.', params: `Levels: ${p.levels ?? '—'}` };
+                }
+                if (effect.apply === this.modulo) {
+                    return { description: 'Shows pixel values modulo N, re-scaled to full range.', usage: 'Can elicit repeating residues typical of arithmetic stego or compression side-effects.', params: `Modulo: ${p.value ?? '—'}` };
+                }
+                if (effect.apply === this.threshold) {
+                    return { description: 'Binarizes the image using a fixed threshold on brightness.', usage: 'Exposes binary-like payloads and cutoffs; quick way to separate signal from background.', params: `Threshold: ${p.value ?? '—'}` };
+                }
+                if (effect.apply === this.gamma) {
+                    return { description: 'Applies a gamma curve to remap tonal response.', usage: 'Probes shadow/highlight bias to expose embeds that prefer certain intensity ranges.', params: `Gamma: ${p.gamma ?? '—'}` };
+                }
+                if (effect.apply === this.colorTemp) {
+                    return { description: 'Shifts color temperature by nudging red/blue channels.', usage: 'Accentuates warm/cool residuals that may come from biased embeds.', params: `Temperature offset: ${p.temp ?? '—'}` };
+                }
+                if (effect.apply === this.solarize) {
+                    return { description: 'Inverts values above a threshold (solarization).', usage: 'Accentuates mid-to-high intensity anomalies; can reveal structured payloads.', params: `Level: ${p.level ?? '—'}` };
+                }
+                return { description: 'Image filter used to probe for hidden information.', usage: 'Use as a diagnostic to amplify, isolate, or contrast features that may contain steganography.', params: '' };
+            },
+
+            updateInfoPanel() {
+                const infoContent = document.getElementById('info-content');
+                if (!infoContent) return;
+                if (!this.effects || this.effects.length === 0) {
+                    infoContent.innerHTML = `
+                        <p style="color: #888; font-size: 11px; text-align: center; font-style: italic;">
+                            Load an image and select an effect to see details
+                        </p>`;
+                    return;
+                }
+                const effect = this.effects[this.currentEffectIndex];
+                const linfo = this.getLightingInfo(effect);
+                const params = linfo.params ? `<div class="info-section-title">Parameters</div><div class="info-text">${linfo.params}</div>` : '';
+                infoContent.innerHTML = `
+                    <div class="method-name">${effect.name}</div>
+                    <div class="info-section-title">What It Does</div>
+                    <div class="info-text">${linfo.description}</div>
+                    <div class="info-section-title">Forensics Use</div>
+                    <div class="info-text">${linfo.usage}</div>
+                    ${params}
+                `;
+            },
+            
             // Zoom and pan state
             scale: 1.0,
             panX: 0,
@@ -369,6 +576,7 @@
                 const container = document.getElementById('canvas-container');
                 this.canvas.width  = container.clientWidth;
                 this.canvas.height = container.clientHeight;
+                this.updateInfoPanel();
             },
 
             setupEffects() {
@@ -501,7 +709,7 @@
                     lastBaseName = baseName;
                 }
                 
-                this.updateEffectDisplay();
+                this.updateEffectDisplay();\n                this.updateInfoPanel();\n                this.updateInfoPanel();
             },
 
             setupEventListeners() {
@@ -515,7 +723,7 @@
                         const value = parseInt(effectInput.value);
                         if (value >= 1 && value <= this.effects.length) {
                             this.currentEffectIndex = value - 1;
-                            this.updateEffectDisplay();
+                            this.updateEffectDisplay();\n                this.updateInfoPanel();\n                            this.updateInfoPanel();
                             this.render();
                         }
                         effectInput.value = '';
@@ -569,6 +777,7 @@
                         this.resizeCanvas();
                         this.drawOriginal();
                         this.showHint('Move mouse over image to reveal hidden data', 3000);
+                        this.updateInfoPanel();
                     };
                     img.src = event.target.result;
                 };
@@ -728,7 +937,7 @@
                     // Jump to next/previous group
                     const nextGroup = (currentGroup + direction + this.effectGroups.length) % this.effectGroups.length;
                     this.currentEffectIndex = this.effectGroups[nextGroup];
-                    this.updateEffectDisplay();
+                    this.updateEffectDisplay();\n                this.updateInfoPanel();\n                    this.updateInfoPanel();
                     this.render();
                 } else if (e.shiftKey || this.isShiftPressed) {
                     // Adjust radius
@@ -740,7 +949,7 @@
                     // Cycle effects
                     const delta = e.deltaY > 0 ? 1 : -1;
                     this.currentEffectIndex = (this.currentEffectIndex + delta + this.effects.length) % this.effects.length;
-                    this.updateEffectDisplay();
+                    this.updateEffectDisplay();\n                this.updateInfoPanel();\n                    this.updateInfoPanel();
                     this.render();
                 }
             },
@@ -1184,8 +1393,7 @@
                     this.scale = state.scale || 1.0;
                     this.panX = state.panX || 0;
                     this.panY = state.panY || 0;
-                    this.updateEffectDisplay();
-                    document.getElementById('radius-value').textContent = this.radius + 'px';
+                    this.updateEffectDisplay();\n                this.updateInfoPanel();\n                    document.getElementById('radius-value').textContent = this.radius + 'px';
                     document.getElementById('zoom-value').textContent = Math.round(this.scale * 100) + '%';
                     this.render();
                     this.showHint('State loaded!', 2000);
@@ -1202,8 +1410,7 @@
                     this.scale = state.scale || 1.0;
                     this.panX = state.panX || 0;
                     this.panY = state.panY || 0;
-                    this.updateEffectDisplay();
-                    document.getElementById('radius-value').textContent = this.radius + 'px';
+                    this.updateEffectDisplay();\n                this.updateInfoPanel();\n                    document.getElementById('radius-value').textContent = this.radius + 'px';
                     document.getElementById('zoom-value').textContent = Math.round(this.scale * 100) + '%';
                     this.render();
                     this.showHint(`Preset ${slot + 1} loaded!`, 2000);
@@ -1231,8 +1438,7 @@
             resetEffect() {
                 this.currentEffectIndex = 0;
                 this.radius = 150;
-                this.updateEffectDisplay();
-                document.getElementById('radius-value').textContent = this.radius + 'px';
+                this.updateEffectDisplay();\n                this.updateInfoPanel();\n                document.getElementById('radius-value').textContent = this.radius + 'px';
                 this.drawOriginal();
             },
 
@@ -1251,5 +1457,25 @@
 
         window.addEventListener('DOMContentLoaded', () => app.init());
     </script>
+    <script>
+      // License modal controls (shared with both panels)
+      function openLicense() {
+        document.getElementById('licenseOverlay').classList.add('show');
+        document.getElementById('licenseModal').classList.add('show');
+      }
+      function closeLicense() {
+        document.getElementById('licenseOverlay').classList.remove('show');
+        document.getElementById('licenseModal').classList.remove('show');
+      }
+      window.addEventListener('DOMContentLoaded', () => {
+        const link = document.getElementById('licenseLink');
+        const overlay = document.getElementById('licenseOverlay');
+        const closeX = document.getElementById('licenseClose');
+        if (link) link.addEventListener('click', openLicense);
+        if (overlay) overlay.addEventListener('click', closeLicense);
+        if (closeX) closeX.addEventListener('click', closeLicense);
+      });
+    </script>
 </body>
 </html>
+
