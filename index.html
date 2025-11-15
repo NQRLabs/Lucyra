@@ -768,33 +768,58 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                 window.addEventListener('resize', () => this.resizeCanvas());
             },
 
-            loadImage(e) {
+            async loadImage(e) {
                 const file = e.target.files[0];
                 if (!file) return;
 
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        this.originalImage = img;
-                        // Prepare native-resolution source canvas/data
-                        this.sourceCanvas = document.createElement('canvas');
-                        this.sourceCanvas.width = img.width;
-                        this.sourceCanvas.height = img.height;
-                        this.sourceCtx = this.sourceCanvas.getContext('2d', { willReadFrequently: true });
-                        this.sourceCtx.drawImage(img, 0, 0);
-                        this.sourceImageData = this.sourceCtx.getImageData(0, 0, img.width, img.height);
-                        this.scale = 1.0;
-                        this.panX = 0;
-                        this.panY = 0;
-                        this.resizeCanvas();
-                        this.drawOriginal();
-                        this.showHint('Move mouse over image to reveal hidden data', 3000);
-                        this.updateInfoPanel();
-                    };
-                    img.src = event.target.result;
+                const useBitmap = typeof window.createImageBitmap === 'function';
+                if (useBitmap) {
+                    try {
+                        const bitmap = await createImageBitmap(file, {
+                            premultiplyAlpha: 'none',
+                            colorSpaceConversion: 'none'
+                        });
+                        this.ingestLoadedImage(bitmap);
+                        bitmap.close();
+                        return;
+                    } catch (err) {
+                        console.warn('ImageBitmap decode failed, falling back to Image()', err);
+                    }
+                }
+
+                const img = new Image();
+                img.onload = () => {
+                    this.ingestLoadedImage(img);
+                    URL.revokeObjectURL(img.src);
                 };
-                reader.readAsDataURL(file);
+                img.onerror = () => {
+                    this.showHint('Failed to load image', 2000);
+                };
+                img.src = URL.createObjectURL(file);
+            },
+
+            ingestLoadedImage(image) {
+                this.originalImage = image;
+                const width = image.width;
+                const height = image.height;
+
+                // Prepare native-resolution source canvas/data without another drawImage round-trip later
+                this.sourceCanvas = document.createElement('canvas');
+                this.sourceCanvas.width = width;
+                this.sourceCanvas.height = height;
+                this.sourceCtx = this.sourceCanvas.getContext('2d', { willReadFrequently: true });
+                this.sourceCtx.globalCompositeOperation = 'copy';
+                this.sourceCtx.drawImage(image, 0, 0);
+                this.sourceImageData = this.sourceCtx.getImageData(0, 0, width, height);
+
+                // Reset view state and display
+                this.scale = 1.0;
+                this.panX = 0;
+                this.panY = 0;
+                this.resizeCanvas();
+                this.drawOriginal();
+                this.showHint('Move mouse over image to reveal hidden data', 3000);
+                this.updateInfoPanel();
             },
 
 
@@ -993,21 +1018,31 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                     const srcW = (this.sourceCanvas && this.sourceCanvas.width) || (this.originalImage ? this.originalImage.width : this.canvas.width);
                     const srcH = (this.sourceCanvas && this.sourceCanvas.height) || (this.originalImage ? this.originalImage.height : this.canvas.height);
 
+                    let nativeData;
+                    if (this.sourceImageData && this.sourceImageData.width === srcW && this.sourceImageData.height === srcH) {
+                        // Clone so effects don't mutate the cached source buffer
+                        nativeData = new ImageData(new Uint8ClampedArray(this.sourceImageData.data), srcW, srcH);
+                    } else if (this.sourceCanvas) {
+                        const tempCtx = this.sourceCanvas.getContext('2d', { willReadFrequently: true });
+                        nativeData = tempCtx.getImageData(0, 0, srcW, srcH);
+                    } else if (this.originalImage) {
+                        const tempCanvas = document.createElement('canvas');
+                        tempCanvas.width = srcW;
+                        tempCanvas.height = srcH;
+                        const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+                        tempCtx.drawImage(this.originalImage, 0, 0);
+                        nativeData = tempCtx.getImageData(0, 0, srcW, srcH);
+                    } else {
+                        nativeData = this.ctx.getImageData(0, 0, srcW, srcH);
+                    }
+
+                    const params = { ...effect.params, workingWidth: srcW, workingHeight: srcH };
+                    effect.apply.call(this, nativeData.data, params);
+
                     const nativeCanvas = document.createElement('canvas');
                     nativeCanvas.width = srcW;
                     nativeCanvas.height = srcH;
                     const nctx = nativeCanvas.getContext('2d', { willReadFrequently: true });
-                    if (this.sourceImageData) {
-                        nctx.putImageData(this.sourceImageData, 0, 0);
-                    } else if (this.originalImage) {
-                        nctx.drawImage(this.originalImage, 0, 0);
-                    } else {
-                        nctx.drawImage(this.canvas, 0, 0);
-                    }
-
-                    let nativeData = nctx.getImageData(0, 0, srcW, srcH);
-                    const params = { ...effect.params, workingWidth: srcW, workingHeight: srcH };
-                    effect.apply.call(this, nativeData.data, params);
                     nctx.putImageData(nativeData, 0, 0);
 
                     // 2) Scale effected native result into a full-canvas buffer aligned to the image placement
@@ -1131,6 +1166,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                     data[i] = value;
                     data[i + 1] = value;
                     data[i + 2] = value;
+                    data[i + 3] = 255; // ensure output remains visible even over fully transparent regions
                 }
             },
 
