@@ -134,30 +134,52 @@
 
         /* License modal styles (adapted to Lucyra palette) */
         .license-footer {
+          border-top: 2px solid #0099cc;
           margin-top: 30px;
           margin-bottom: 20px;
           padding: 10px 8px;
           font-size: 0.68rem;
           color: #a9a9b2;
           opacity: 0.7;
-          cursor: pointer;
-          transition: opacity 0.15s ease;
+          transition: color 0.3s ease;
           text-align: center;
         }
-
-        .license-footer:hover { opacity: 1; }
+    
+        .license-footer a {
+          color: var(--dim);
+          transition: color 0.3s ease;
+          text-decoration: none;
+          cursor: pointer;
+        }
+        .license-footer a:hover {
+          color: #00ff88;
+          text-decoration: underline;
+          cursor: pointer;
+        }
 
         .license-overlay {
+          backdrop-filter: blur(4px);
           display: none; position: fixed; inset: 0;
           background: rgba(0,0,0,0.7); z-index: 999;
         }
 
         .license-modal {
-          display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-          background: #0f0f16; border: 2px solid rgba(0,212,255,0.35);
-          border-radius: 12px; padding: 20px; max-width: 520px; width: 90%;
-          max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.6);
-          z-index: 1000; text-align: center;
+          display: none; 
+          position: fixed; 
+          top: 50%; 
+          left: 50%; 
+          transform: translate(-50%, -50%);
+          background: #0f0f16; 
+          border: 2px solid rgba(0,212,255,0.35);
+          border-radius: 12px; 
+          padding: 20px; 
+          max-width: 520px; 
+          width: 90%;
+          max-height: 80vh; 
+          overflow-y: auto; 
+          box-shadow: 0 20px 60px rgba(0,0,0,.6);
+          z-index: 1000; 
+          text-align: left;
         }
 
         .license-modal.show, .license-overlay.show { display: block; }
@@ -432,17 +454,26 @@
                 Load an image and select an effect to see details
             </p>
         </div>
-        <footer class="license-footer" id="licenseLink">MIT License &middot; Developed by NQR &middot; Click to view</footer>
+        <footer class="license-footer">
+          <a href="https://youtube.com/@CLU-NQR" target="_blank">YouTube</a> &middot;
+          <a href="https://discord.gg/HT9YE8rvuN" target="_blank">Discord</a> &middot;
+          <a href="https://nqrlabs.com" target="_blank">NQR Labs</a> &middot;
+          <a href="https://github.com/NQRLabs" target="_blank">GitHub</a>
+          <br>
+          &copy; 2025 NQR &middot; <a id="licenseLink">License</a> 
+        </footer>
     </div>
 
     <div class="license-overlay" id="licenseOverlay"></div>
     <div class="license-modal" id="licenseModal" role="dialog" aria-modal="true" aria-labelledby="licenseTitle">
       <div class="license-modal-header">
-        <h3 class="license-modal-title" id="licenseTitle">MIT License</h3>
+        <h3 class="license-modal-title" id="licenseTitle">Lucyra License</h3>
         <span class="license-modal-close" id="licenseClose" aria-label="Close license dialog">&times;</span>
       </div>
-      <pre class="small-muted" style="text-align:center; white-space:pre-wrap; margin-top:14px; color:#a9a9b2;">
-Copyright (c) 2025 NQR
+      <pre class="small-muted" style="white-space:pre-wrap; margin-top:14px; color:#a9a9b2;">
+Lucyra - MIT License
+
+Copyright &copy; 2025 NQR
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
@@ -783,12 +814,18 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                     if (e.key === 'Alt') this.isAltPressed = false;
                 });
 
-                window.addEventListener('resize', () => this.resizeCanvas());
+                // Immediate resize for responsive feel
+                window.addEventListener('resize', () => this.handleResize());
             },
 
             async loadImage(e) {
                 const file = e.target.files[0];
                 if (!file) return;
+
+                // Close previous bitmap if it exists
+                if (this.originalImage && typeof this.originalImage.close === 'function') {
+                    this.originalImage.close();
+                }
 
                 const useBitmap = typeof window.createImageBitmap === 'function';
                 if (useBitmap) {
@@ -798,7 +835,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                             colorSpaceConversion: 'none'
                         });
                         this.ingestLoadedImage(bitmap);
-                        bitmap.close();
+                        // DON'T close the bitmap - we need it for the lifetime of the session
                         return;
                     } catch (err) {
                         console.warn('ImageBitmap decode failed, falling back to Image()', err);
@@ -834,43 +871,98 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                 this.scale = 1.0;
                 this.panX = 0;
                 this.panY = 0;
+
+                // Clear draw dimensions to force recalculation for new image aspect ratio
+                this.drawW = undefined;
+                this.drawH = undefined;
+                this.drawX = undefined;
+                this.drawY = undefined;
+
+                // resizeCanvas() calls handleResize() which calls drawOriginal() and render()
                 this.resizeCanvas();
-                this.drawOriginal();
                 this.showHint('Move mouse over image to reveal hidden data', 3000);
                 this.updateInfoPanel();
             },
 
 
-            resizeCanvas() {
+            handleResize() {
+              if (!this.originalImage) {
+                // No image loaded, just size the canvas
+                const container = document.getElementById('canvas-container');
+                this.canvas.width  = container.clientWidth;
+                this.canvas.height = container.clientHeight;
+                return;
+              }
+
               const container = document.getElementById('canvas-container');
-            
-              // Always make the canvas match the available space on the right
-              this.canvas.width  = container.clientWidth;
-              this.canvas.height = container.clientHeight;
-            
-              if (!this.originalImage) return;
-            
-              // Compute a "contain" rectangle for the image inside the full-size canvas
+
+              // Get new dimensions
+              const newWidth = container.clientWidth;
+              const newHeight = container.clientHeight;
+
+              // Check if dimensions actually changed AND draw dimensions exist
+              // (don't skip if this is first time setting up draw dimensions)
+              const dimensionsUnchanged = (this.canvas.width === newWidth &&
+                                          this.canvas.height === newHeight);
+              const drawDimensionsExist = (this.drawW !== undefined &&
+                                          this.drawH !== undefined &&
+                                          this.drawX !== undefined &&
+                                          this.drawY !== undefined);
+
+              if (dimensionsUnchanged && drawDimensionsExist) {
+                return; // Skip if nothing changed
+              }
+
+              // Set canvas size (this clears the canvas)
+              this.canvas.width  = newWidth;
+              this.canvas.height = newHeight;
+
+              // Recalculate image placement with aspect ratio
               const imgW = this.originalImage.width;
               const imgH = this.originalImage.height;
               const imgAspect = imgW / imgH;
-              const canvasAspect = this.canvas.width / this.canvas.height;
-            
+              const canvasAspect = newWidth / newHeight;
+
               if (imgAspect > canvasAspect) {
                 // Fit width, center vertically
-                this.drawW = this.canvas.width;
+                this.drawW = newWidth;
                 this.drawH = Math.round(this.drawW / imgAspect);
                 this.drawX = 0;
-                this.drawY = Math.floor((this.canvas.height - this.drawH) / 2);
+                this.drawY = Math.floor((newHeight - this.drawH) / 2);
               } else {
                 // Fit height, center horizontally
-                this.drawH = this.canvas.height;
+                this.drawH = newHeight;
                 this.drawW = Math.round(this.drawH * imgAspect);
                 this.drawY = 0;
-                this.drawX = Math.floor((this.canvas.width - this.drawW) / 2);
+                this.drawX = Math.floor((newWidth - this.drawW) / 2);
               }
-            
+
+              // Reset view state
+              this.scale = 1.0;
+              this.panX = 0;
+              this.panY = 0;
+
+              // Center mouse on image
+              this.mouseX = this.drawX + this.drawW / 2;
+              this.mouseY = this.drawY + this.drawH / 2;
+
+              // Invalidate all caches
+              this.cachedEffectedData = null;
+              this.cachedEffectIndex = -1;
+              this.imageData = null;
+
+              // Update UI
+              const zoomValue = document.getElementById('zoom-value');
+              if (zoomValue) zoomValue.textContent = '100%';
+
+              // Redraw everything from scratch
               this.drawOriginal();
+              this.render();
+            },
+
+            resizeCanvas() {
+              // Legacy function - redirect to handleResize
+              this.handleResize();
             },
 
             drawOriginal() {
@@ -944,9 +1036,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
             handleMouseLeave() {
                 this.isDragging = false;
-                this.drawOriginal();
+                // Keep the current view instead of clearing when the cursor leaves the preview
+                this.render();
                 this.canvas.classList.remove('dragging');
-                this.canvas.classList.remove('draggable');
+                this.canvas.classList.add('draggable');
             },
 
             handleWheel(e) {
@@ -1013,21 +1106,24 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
             },
 
             render() {
+                // If canvas resized or base missing, redraw base to keep buffers in sync
+                if (!this.imageData || this.imageData.width !== this.canvas.width || this.imageData.height !== this.canvas.height) {
+                    this.drawOriginal();
+                }
+                // If cached effect size is stale after resize, invalidate so we rebuild with correct aspect
+                if (this.cachedEffectedData && (this.cachedEffectedData.width !== this.canvas.width || this.cachedEffectedData.height !== this.canvas.height)) {
+                    this.cachedEffectedData = null;
+                    this.cachedEffectIndex = -1;
+                }
+
                 if (!this.imageData) return;
 
-                // Clear and set transform
+                // Clear to a clean slate
                 this.ctx.setTransform(1, 0, 0, 1, 0, 0);
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                
-                // Apply zoom and pan
+
                 const canvasCenterX = this.canvas.width / 2;
                 const canvasCenterY = this.canvas.height / 2;
-                this.ctx.translate(canvasCenterX + this.panX, canvasCenterY + this.panY);
-                this.ctx.scale(this.scale, this.scale);
-                this.ctx.translate(-canvasCenterX, -canvasCenterY);
-
-                // Draw base image
-                this.ctx.putImageData(this.imageData, 0, 0);
 
                 // Cache effected data if effect hasn't changed
                 const effect = this.effects[this.currentEffectIndex];
@@ -1082,7 +1178,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                 }
 
                 const effectedData = this.cachedEffectedData;
-                const finalData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+                // Start from the current base image buffer so unlit areas stay aligned
+                const finalData = new ImageData(new Uint8ClampedArray(this.imageData.data), this.canvas.width, this.canvas.height);
                 
                 // Optimized: only process pixels within bounding box
                 const minX = Math.max(0, Math.floor(this.mouseX - this.radius));
@@ -1112,15 +1209,14 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
                     }
                 }
 
-                // Reset transform, draw final result, then reapply transform
+                // Draw the final result with the same transform for base and light
                 this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-                
                 const finalCanvas = document.createElement('canvas');
                 finalCanvas.width = this.canvas.width;
                 finalCanvas.height = this.canvas.height;
                 const finalCtx = finalCanvas.getContext('2d');
                 finalCtx.putImageData(finalData, 0, 0);
-                
+
                 this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
                 this.ctx.translate(canvasCenterX + this.panX, canvasCenterY + this.panY);
                 this.ctx.scale(this.scale, this.scale);
